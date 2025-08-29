@@ -4,37 +4,41 @@
 
 {% block content %}
 <div class="container">
-  <h1 class="heading">My Top Books</h1>
-  <p class="description">These are my all-time favourite books.</p>
-
-
-  {% for book in books %}
-  <div class="card" >
-    <div class="front" style="background-image: url({{book.img_url}});">
-        <p class="large">{{book.ranking}}</p>
-    </div>
-    <div class="back">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
       <div>
-    <div class="title">{{book.title}} <span class="release_date">({{book.year}})</span></div>
-        <div class="rating">
-            <label>{{book.rating}}</label>
-          <i class="fas fa-star star"></i>
+          <h1 class="heading">My Top Books</h1>
+          <p class="description">These are my all-time favourite books.</p>
+      </div>
+      <div>
+          <a href="{{ url_for('add') }}" class="button">Add Book</a>
+      </div>
+  </div>
+
+  <div class="book-grid">
+    {% for book in books %}
+    <div class="card">
+      <!-- Front: boekcover -->
+      <div class="front" style="background-image: url('{{ book.img_url if book.img_url else '/static/no_cover.png' }}');">
+      </div>
+
+      <!-- Back: info over boek -->
+      <div class="back">
+        <div class="book-info">
+            <h2>{{ book.title }}</h2>
+            <p>{{ book.author }} ({{ book.year }})</p>
+            <p>{{ book.star_rating if book.star_rating else "N/A" }}⭐</p>
+            <p>{{ book.spice_rating if book.spice_rating else "N/A" }}🌶️ </p>
+            <p class="review">{{ book.review }}</p>
+            <div class="buttons">
+                <a href="{{ url_for('edit', id=book.id) }}" class="button">Update</a>
+                <a href="{{ url_for('delete', id=book.id) }}" class="button delete-button">Delete</a>
+            </div>
         </div>
-          <p class="review">"{{book.review}}"</p>
-        <p class="overview">
-            {{book.author}}
-        </p>
-
-        <a href="{{ url_for('edit', id=book.id) }}" class="button">Update</a>
-        <a href="{{ url_for('delete', id=book.id) }}" class="button delete-button">Delete</a>
-
       </div>
     </div>
-  </div>
     {% endfor %}
+  </div>
 </div>
-<div class="container text-center add">
-<a href="{{ url_for('add') }}" class="button">Add Book</a>
-</div>
+
 
 {% endblock %}

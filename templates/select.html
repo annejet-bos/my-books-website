@@ -5,14 +5,17 @@
 {% block content %}
 <div class="container">
     <h1 class="heading">Select Book</h1>
-  <p>
-      {% for result in results %}
-        <div>
-            <a href="{{ url_for('find', id=result.id) }}"> {{ result['title'] }} - {{ result['release_date'] }}</a>
-        </div>
-
-      {% endfor %}
-  </p>
-
+    <p>
+        {% for result in results %}
+            <div>
+                {# Haal OLID uit key: /works/OL12345W → OL12345W #}
+                {% set olid = result.key.split('/')[-1] %}
+                <a href="{{ url_for('find', id=olid) }}">
+                    {{ result['title'] }} - {{ result['first_publish_year'] if result['first_publish_year'] else 'Unknown Year' }}
+                    {% if result.author_name %} by {{ result.author_name[0] }} {% endif %}
+                </a>
+            </div>
+        {% endfor %}
+    </p>
 </div>
 {% endblock %}

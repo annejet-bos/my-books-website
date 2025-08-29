@@ -34,6 +34,21 @@
     <title>{% block title %}{% endblock %}</title>
   </head>
   <body>
+    <nav class="navbar">
+    <div class="nav-container">
+      <div class="nav-left">
+        <ul class="nav-links">
+          <li><a href="{{ url_for('home') }}">Home</a></li>
+          <li><a href="{{ url_for('home') }}">TBR</a></li>
+          <li><a href="{{ url_for('home') }}">Top Books</a></li>
+          <li><a href="{{ url_for('home') }}">Stats</a></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <main>
     {% block content %}{% endblock %}
+  </main>
   </body>
 </html>
