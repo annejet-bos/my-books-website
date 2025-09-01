@@ -92,6 +92,8 @@ def home():
 
     return render_template(
         "home.html",
+        goal=goal,
+        read_books=read_books,
         progress=progress,
         currently_reading=currently_reading,
         recently_read=recently_read
@@ -99,17 +101,20 @@ def home():
 
 @app.route("/top-books")
 def top_books():
-    result = db.session.execute(db.select(Book).order_by(Book.star_rating))
-    all_books = result.scalars().all()
-    rank = 1
-    for book in all_books:
+    read_books = db.session.query(Book).filter(Book.date_finished.isnot(None)).order_by(desc(Book.star_rating)).all()
+    for rank, book in enumerate(read_books, start=1):
         book.ranking = rank
-        rank += 1
-        db.session.commit()
-    all_books = db.session.execute(db.select(Book).order_by(desc(Book.ranking))).scalars()
-    return render_template("index.html", books = all_books)
+    db.session.commit()
+    return render_template("index.html", books = read_books)
 
 
+@app.route('/tbr')
+def tbr():
+    tbr_books = db.session.query(Book).filter(
+        Book.date_started.is_(None),
+        Book.date_finished.is_(None)
+    ).all()
+    return render_template('tbr.html', books=tbr_books)
 
 
 
@@ -130,6 +135,7 @@ def edit():
     return render_template('edit.html', form=form, book=book_to_update)
 
 
+
 @app.route('/delete')
 def delete():
     book_id = request.args.get('id')
@@ -139,6 +145,15 @@ def delete():
     db.session.commit()
     return redirect(url_for('home'))
 
+@app.route('/delete-tbr')
+def delete_tbr():
+    book_id = request.args.get('id')
+    book_to_delete = db.get_or_404(Book, book_id)
+
+    db.session.delete(book_to_delete)
+    db.session.commit()
+    return redirect(url_for('tbr'))
+
 
 @app.route('/add', methods=['GET', 'POST'])
 def add():
@@ -146,7 +161,6 @@ def add():
 
     if form.validate_on_submit():
         book_to_find = form.title.data
-        # **gebruik search API**
         response = requests.get(f"https://openlibrary.org/search.json?title={book_to_find}")
         results = response.json()['docs']
 
@@ -173,39 +187,31 @@ def add_currently_reading():
 
     return render_template('add.html', form=form)
 
+@app.route('/add-tbr', methods=['GET', 'POST'])
+def add_tbr():
+    form = AddBookForm()
+    if form.validate_on_submit():
+        book_to_find = form.title.data
+        response = requests.get(f"https://openlibrary.org/search.json?title={book_to_find}")
+        results = response.json()['docs']
 
-@app.route('/add-currently-reading/select')
-def select_current():
+        if not results:
+            return redirect(url_for('home'))
+
+        results = results[:10]
+
+        return render_template('select_tbr.html', results = results)
+
+    return render_template('add.html', form=form)
+
+
+@app.route('/tbr-to-cr', methods=['GET', 'POST'])
+def tbr_to_cr():
     olid = request.args.get('id')
-    if not olid:
-        return redirect(url_for('home'))
-
-    response = requests.get(f"https://openlibrary.org/search.json?q={olid}")
-    results = response.json()['docs']
-    if not results:
-        return redirect(url_for('home'))
-
-    selected = results[0]
-
-    title = selected.get('title', 'No Title')
-    author_name = selected.get('author_name', ['Unknown'])[0]
-    year = selected.get('first_publish_year', 0)
-    cover_id = selected.get('cover_i')
-    img_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg" if cover_id else None
-
-    new_book = Book(
-        title=title,
-        author=author_name,
-        year=year,
-        img_url=img_url,
-        date_started=date.today()
-    )
-    db.session.add(new_book)
+    book = db.session.get(Book, olid)
+    book.date_started = date.today()
     db.session.commit()
-
     return redirect(url_for('home'))
-
-
 
 
 @app.route('/finish/<int:id>', methods=['GET', 'POST'])
@@ -291,12 +297,44 @@ def find_current():
         author=author_name,
         year=year,
         img_url=img_url,
-        date_started=date.today()  # << belangrijk
+        date_started=date.today()
     )
     db.session.add(new_book)
     db.session.commit()
 
     return redirect(url_for('home'))
+
+
+@app.route('/find-tbr')
+def find_tbr():
+    olid = request.args.get('id')
+    if not olid:
+        return redirect(url_for('tbr'))
+
+    response = requests.get(f"https://openlibrary.org/search.json?q={olid}")
+    results = response.json()['docs']
+    if not results:
+        return redirect(url_for('tbr'))
+
+    selected = results[0]
+
+    title = selected.get('title', 'No Title')
+    author_name = selected.get('author_name', ['Unknown'])[0]
+    year = selected.get('first_publish_year', 0)
+    cover_id = selected.get('cover_i')
+    img_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg" if cover_id else None
+
+    new_book = Book(
+        title=title,
+        author=author_name,
+        year=year,
+        img_url=img_url
+    )
+    db.session.add(new_book)
+    db.session.commit()
+
+    return redirect(url_for('tbr'))
+
 
 
 if __name__ == '__main__':

@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block title %}TBR{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <div>
+          <h1 class="heading">My TBR</h1>
+          <p class="description">I want to read all these books!</p>
+      </div>
+      <div>
+          <a href="{{ url_for('add_tbr') }}" class="button">Add Book</a>
+      </div>
+  </div>
+<div class="book-grid">
+    {% for book in books %}
+    <div class="card">
+      <!-- Front: boekcover -->
+      <div class="front" style="background-image: url('{{ book.img_url if book.img_url else '/static/no_cover.png' }}');">
+      </div>
+
+      <!-- Back: info over boek -->
+      <div class="back">
+        <div class="book-info">
+            <h2>{{ book.title }}</h2>
+            <p>{{ book.author }} ({{ book.year }})</p>
+            <div class="buttons">
+                <a href="{{ url_for('tbr_to_cr', id=book.id) }}" class="button">Currently Reading</a>
+                <a href="{{ url_for('delete_tbr', id=book.id) }}" class="button delete-button">Delete</a>
+            </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

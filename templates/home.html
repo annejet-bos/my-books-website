@@ -8,9 +8,8 @@
     <h2 class="heading">📚 Reading Challenge</h2>
   </div>
   <div class="progress">
-    <div class="progress-bar" style="width: {{ progress }}%;">
-      {{ progress }}%
-    </div>
+    <div class="progress-bar" style="width: {{ progress }}%;"></div>
+    <div class="progress-text">{{ read_books }}/{{ goal }}</div>
   </div>
 
   <!-- Currently Reading -->
@@ -26,7 +25,7 @@
 
 
 
-  <div class="books-grid">
+  <div class="book-grid">
     {% for book in currently_reading %}
       <div class="card">
         <div class="front" style="background-image: url({{ book.img_url }});">
