@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% block title %}Home{% endblock %}
+
+{% block content %}
+  <!-- Reading Challenge -->
+<div class="container">
+  <div>
+    <h2 class="heading">📚 Reading Challenge</h2>
+  </div>
+  <div class="progress">
+    <div class="progress-bar" style="width: {{ progress }}%;">
+      {{ progress }}%
+    </div>
+  </div>
+
+  <!-- Currently Reading -->
+  <div class="container">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <div>
+          <h2 class="heading">📖 Currently Reading</h2>
+      </div>
+      <div>
+          <a href="{{ url_for('add_currently_reading') }}" class="button">Add Book</a>
+      </div>
+  </div>
+
+
+
+  <div class="books-grid">
+    {% for book in currently_reading %}
+      <div class="card">
+        <div class="front" style="background-image: url({{ book.img_url }});">
+          <!-- eventueel iets simpels hier -->
+        </div>
+        <div class="back">
+          <div class="title">{{ book.title }}</div>
+          <p class="overview">{{ book.author }}</p>
+          <p class="small">Started: {{ book.date_started.strftime('%Y-%m-%d') if book.date_started else "Not set" }}</p>
+          <div class="buttons">
+                <a href="{{ url_for('finish', id=book.id) }}" class="button">Finish</a>
+                <a href="{{ url_for('delete', id=book.id) }}" class="button delete-button">Delete</a>
+            </div>
+        </div>
+      </div>
+    {% else %}
+      <p>No books currently being read.</p>
+    {% endfor %}
+  </div>
+
+  <!-- Recently Read -->
+  <h2 class="heading mt-5">✅ Recently Read</h2>
+  <div class="book-grid">
+    {% for book in recently_read %}
+      <div class="card">
+        <div class="front" style="background-image: url({{book.img_url}});"></div>
+        <div class="back">
+          <div class='book-info'>
+            <h2>{{ book.title }}</h2>
+            <p>{{ book.author }} ({{ book.year }})</p>
+            <p>{{ book.star_rating if book.star_rating else "N/A" }}⭐</p>
+            <p>{{ book.spice_rating if book.spice_rating else "N/A" }}🌶️ </p>
+          <p><small>Finished: {{ book.date_finished }}</small></p>
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <p>No recently read books.</p>
+    {% endfor %}
+  </div>
+
+</div>
+{% endblock %}
