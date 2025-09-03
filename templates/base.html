@@ -38,10 +38,10 @@
     <div class="nav-container">
       <div class="nav-left">
         <ul class="nav-links">
-          <li><a href="{{ url_for('home') }}">Home</a></li>
-          <li><a href="{{ url_for('tbr') }}">TBR</a></li>
-          <li><a href="{{ url_for('top_books') }}">Top Books</a></li>
-          <li><a href="{{ url_for('home') }}">Stats</a></li>
+          <li><a href="{{ url_for('home') }}" class="{% if request.path == '/' %}active{% endif %}">Home</a></li>
+          <li><a href="{{ url_for('tbr') }}" class="{% if request.path == '/tbr' %}active{% endif %}">TBR</a></li>
+          <li><a href="{{ url_for('top_books') }}" class="{% if request.path == '/top-books' %}active{% endif %}">Top Books</a></li>
+          <li><a href="{{ url_for('stats') }}" class="{% if request.path == '/stats' %}active{% endif %}">Stats</a></li>
         </ul>
       </div>
     </div>

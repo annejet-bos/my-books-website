@@ -1,10 +1,17 @@
 {% extends 'base.html' %}
-{% from 'bootstrap5/form.html' import render_form %}
+{% from 'bootstrap5/form.html' import render_form, render_field %}
 {% block title %}Add Book{% endblock %}
 
 {% block content %}
 <div class="content">
     <h1 class="heading">Add a Book</h1>
-    <p>{{ render_form(form, novalidate=True) }}</p>
+    <form method="POST">
+        {{ form.hidden_tag() }}
+        {{ render_field(form.title) }}
+        <!-- Als je nog andere velden hebt, herhaal render_field -->
+
+        <!-- Roze knop voor submit -->
+        <button type="submit" class="button">{{ form.add.label.text }}</button>
+    </form>
 </div>
 {% endblock %}

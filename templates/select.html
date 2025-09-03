@@ -5,16 +5,17 @@
 {% block content %}
 <div class="container">
     <h1 class="heading">Select Book</h1>
-    <p>
+    <div class="book-list">
         {% for result in results %}
-            <div>
+            <div class="book-item">
                 {% set olid = result.key.split('/')[-1] %}
-                <a href="{{ url_for('find', id=olid) }}">
-                    {{ result['title'] }} - {{ result['first_publish_year'] if result['first_publish_year'] else 'Unknown Year' }}
-                    {% if result.author_name %} by {{ result.author_name[0] }} {% endif %}
+                <a href="{{ url_for('find', target=target, id=olid) }}">
+                    {{ result['title'] }}
+                    {% if result.first_publish_year %} ({{ result.first_publish_year }}){% endif %}
+                    {% if result.author_name %} – {{ result.author_name[0] }}{% endif %}
                 </a>
             </div>
         {% endfor %}
-    </p>
+    </div>
 </div>
 {% endblock %}

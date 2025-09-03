@@ -2,13 +2,14 @@ from flask import Flask, render_template, redirect, url_for, request
 from flask.cli import load_dotenv
 from flask_bootstrap import Bootstrap5
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy import Integer, String, Float, desc, Date
 from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import StringField, SubmitField, FloatField, DateField
 from wtforms.validators import DataRequired, Optional
 from dotenv import load_dotenv
 from datetime import datetime, date
+from collections import Counter
 import requests
 import os
 
@@ -45,11 +46,14 @@ class Book(db.Model):
     img_url: Mapped[str] = mapped_column(String(250), nullable=True)
     date_started: Mapped[datetime] = mapped_column(Date, nullable = True)
     date_finished: Mapped[datetime] = mapped_column(Date, nullable = True)
+    pages: Mapped[int] = mapped_column(Integer, nullable=True)
+    genre: Mapped[str] = mapped_column(String(100), nullable=True)
 
 with app.app_context():
     db.create_all()
 
 
+# --------------------------------------------- FORMS -------------------------------------------------------
 class RateBookForm(FlaskForm):
     star_rating = FloatField('Your star rating out of 5 e.g. 3.5', validators=[DataRequired()])
     spice_rating = FloatField('Your spice rating out of 5 e.g. 2.5', validators = [DataRequired()])
@@ -64,29 +68,217 @@ class AddBookForm(FlaskForm):
     add = SubmitField('Add Book')
 
 
+# ------------------------------------------------- HELPERS -------------------------------------------------
+def search_openlibrary(query, limit=10):
+    """Search books via OpenLibrary and return docs."""
+    response = requests.get(f"https://openlibrary.org/search.json?q={query}")
+    results = response.json().get("docs", [])
+    return results[:limit]
+
+
+def get_book_details(work_key):
+    """Get additional book details from OpenLibrary work API."""
+    try:
+        if work_key.startswith('/works/'):
+            work_key = work_key[7:]
+
+        response = requests.get(f"https://openlibrary.org/works/{work_key}.json")
+        if response.status_code == 200:
+            work_data = response.json()
+
+            # Extract and categorize genres
+            raw_subjects = work_data.get('subjects', [])
+            genre = categorize_genre(raw_subjects)
+
+            return {
+                'genre': genre,
+                'raw_subjects': raw_subjects[:5]  # Keep first 5 for debugging
+            }
+    except Exception as e:
+        print(f"Error fetching work details: {e}")
+
+    return {'genre': None, 'raw_subjects': []}
+
+
+def get_book_pages_from_editions(edition_keys, median_pages=None):
+    """Try multiple editions to find page count."""
+    if edition_keys:
+        # Try first few editions (avoid overloading the API)
+        for edition_key in edition_keys[:3]:
+            try:
+                if edition_key.startswith('/books/'):
+                    edition_key = edition_key[7:]
+
+                response = requests.get(f"https://openlibrary.org/books/{edition_key}.json")
+                if response.status_code == 200:
+                    edition_data = response.json()
+                    pages = edition_data.get('number_of_pages')
+
+                    # Ensure it's a positive integer
+                    if pages and isinstance(pages, (int, float)) and pages > 0:
+                        return int(pages)
+            except Exception:
+                continue  # ignore errors and try next edition
+
+    # Fallback: use median pages from search result
+    if median_pages and isinstance(median_pages, (int, float)) and median_pages > 0:
+        return int(median_pages)
+
+    return None
+
+
+def get_edition_details(edition_key):
+    """Get page count from a specific edition."""
+    try:
+        if edition_key.startswith('/books/'):
+            edition_key = edition_key[7:]  # Remove '/books/' prefix
+
+        response = requests.get(f"https://openlibrary.org/books/{edition_key}.json")
+        if response.status_code == 200:
+            edition_data = response.json()
+            return edition_data.get('number_of_pages')
+    except:
+        pass
+    return None
+
+
+def book_from_result(result, started=False):
+    """Make a Book object out of an OpenLibrary result with better page/genre detection."""
+    title = result.get('title', 'No Title')
+    author_name = result.get('author_name', ['Unknown'])[0]
+    year = result.get('first_publish_year', 0)
+    cover_id = result.get('cover_i')
+    img_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg" if cover_id else None
+
+    # Try multiple methods to get page count
+    pages = None
+
+    # Method 1: Direct from search result
+    pages = result.get('number_of_pages_median')
+
+    # Method 2: Try from editions if no median
+    if not pages:
+        edition_keys = result.get('edition_key', [])
+        pages = get_book_pages_from_editions(edition_keys)
+
+    # Method 3: Try from first edition in result
+    if not pages and result.get('edition_count', 0) > 0:
+        if 'edition_key' in result and result['edition_key']:
+            pages = get_book_pages_from_editions([result['edition_key'][0]])
+
+    # Get genre from work details
+    genre = None
+    if result.get('key'):
+        work_details = get_book_details(result['key'])
+        genre = work_details['genre']
+
+    return Book(
+        title=title,
+        author=author_name,
+        year=year,
+        img_url=img_url,
+        pages=pages,
+        genre=genre,
+        date_started=date.today() if started else None
+    )
+
+
+def categorize_genre(raw_subjects):
+    """Convert OpenLibrary's specific subjects to general genres."""
+    if not raw_subjects:
+        return None
+
+    # Convert to lowercase for matching
+    subjects_lower = [subject.lower() for subject in raw_subjects]
+    subjects_text = ' '.join(subjects_lower)
+
+    # Genre mapping - order matters (more specific first)
+    genre_mapping = {
+        'Romance': [
+            'romance', 'love story', 'romantic', 'love', 'relationships',
+            'contemporary romance', 'historical romance'
+        ],
+        'Fantasy': [
+            'fantasy', 'magic', 'magical', 'dragons', 'wizards', 'elves',
+            'sword and sorcery', 'epic fantasy', 'urban fantasy', 'paranormal'
+        ],
+        'Science Fiction': [
+            'science fiction', 'sci-fi', 'space', 'aliens', 'future',
+            'dystopian', 'cyberpunk', 'time travel', 'robots'
+        ],
+        'Mystery': [
+            'mystery', 'detective', 'crime', 'murder', 'investigation',
+            'police', 'thriller', 'suspense', 'noir'
+        ],
+        'Horror': [
+            'horror', 'scary', 'ghost', 'vampire', 'zombie', 'supernatural',
+            'gothic', 'occult'
+        ],
+        'Historical Fiction': [
+            'historical fiction', 'historical', 'world war', 'civil war',
+            'medieval', 'victorian', 'ancient'
+        ],
+        'Young Adult': [
+            'young adult', 'ya', 'teen', 'coming of age', 'high school',
+            'teenage', 'adolescent'
+        ],
+        'Biography': [
+            'biography', 'autobiography', 'memoir', 'life story'
+        ],
+        'Self-Help': [
+            'self-help', 'personal development', 'motivation', 'psychology',
+            'business', 'productivity', 'success'
+        ],
+        'Non-Fiction': [
+            'non-fiction', 'history', 'politics', 'science', 'nature',
+            'travel', 'cooking', 'health', 'religion', 'philosophy'
+        ],
+        'Literary Fiction': [
+            'literary fiction', 'literature', 'classic', 'literary'
+        ],
+        'Adventure': [
+            'adventure', 'action', 'survival', 'expedition'
+        ],
+        'Children': [
+            'children', 'juvenile', 'picture book', 'kids'
+        ]
+    }
+
+    # Check each genre category
+    for genre, keywords in genre_mapping.items():
+        for keyword in keywords:
+            if keyword in subjects_text:
+                return genre
+
+    # If no match found, return the first subject (cleaned up)
+    if raw_subjects:
+        first_subject = raw_subjects[0]
+        # Clean up the subject
+        cleaned = first_subject.replace('_', ' ').title()
+        return cleaned if len(cleaned) < 20 else 'Fiction'
+
+    return 'Fiction'
+
+
+# -------------------------------------------------- ROUTES ------------------------------------------------------
 @app.route("/")
 def home():
-    # doel instellen (kun je later in DB zetten, maar voor nu hardcoded)
     goal = 50
-
-    # tel boeken die een einddatum hebben in dit jaar
     current_year = datetime.now().year
-    read_books = db.session.query(Book).filter(
+
+    read_books = Book.query.filter(
         Book.date_finished.isnot(None),
         Book.date_finished.between(f"{current_year}-01-01", f"{current_year}-12-31")
     ).count()
 
-    # percentage berekenen
     progress = int((read_books / goal) * 100) if goal > 0 else 0
 
-    # --- Currently Reading ---
-    currently_reading = db.session.query(Book).filter(
+    currently_reading = Book.query.filter(
         Book.date_started.isnot(None),
         Book.date_finished.is_(None)
     ).limit(5).all()
 
-    # --- Recently Read ---
-    recently_read = db.session.query(Book).filter(
+    recently_read = Book.query.filter(
         Book.date_finished.isnot(None)
     ).order_by(Book.date_finished.desc()).limit(5).all()
 
@@ -98,6 +290,7 @@ def home():
         currently_reading=currently_reading,
         recently_read=recently_read
     )
+
 
 @app.route("/top-books")
 def top_books():
@@ -117,7 +310,6 @@ def tbr():
     return render_template('tbr.html', books=tbr_books)
 
 
-
 @app.route('/edit', methods=['GET', 'POST'])
 def edit():
     form = RateBookForm()
@@ -135,74 +327,25 @@ def edit():
     return render_template('edit.html', form=form, book=book_to_update)
 
 
-
-@app.route('/delete')
-def delete():
+@app.route("/delete/<string:target>")
+def delete(target):
     book_id = request.args.get('id')
-    book_to_delete = db.get_or_404(Book, book_id)
-
-    db.session.delete(book_to_delete)
+    book = db.get_or_404(Book, book_id)
+    db.session.delete(book)
     db.session.commit()
-    return redirect(url_for('home'))
-
-@app.route('/delete-tbr')
-def delete_tbr():
-    book_id = request.args.get('id')
-    book_to_delete = db.get_or_404(Book, book_id)
-
-    db.session.delete(book_to_delete)
-    db.session.commit()
-    return redirect(url_for('tbr'))
+    return redirect(url_for('tbr' if target == "tbr" else 'home'))
 
 
-@app.route('/add', methods=['GET', 'POST'])
+@app.route("/add", methods=['GET', 'POST'])
 def add():
     form = AddBookForm()
-
+    target = request.args.get('target', None)
     if form.validate_on_submit():
-        book_to_find = form.title.data
-        response = requests.get(f"https://openlibrary.org/search.json?title={book_to_find}")
-        results = response.json()['docs']
-
-        # alleen de eerste 10 resultaten tonen
-        results = results[:10]
-
-        return render_template('select.html', results=results)
-    return render_template('add.html', form=form)
-
-@app.route('/add-currently-reading', methods=['GET', 'POST'])
-def add_currently_reading():
-    form = AddBookForm()
-    if form.validate_on_submit():
-        book_to_find = form.title.data
-        response = requests.get(f"https://openlibrary.org/search.json?title={book_to_find}")
-        results = response.json()['docs']
-
+        results = search_openlibrary(form.title.data)
         if not results:
             return redirect(url_for('home'))
-
-        results = results[:10]
-
-        return render_template('select_current_read.html', results = results)
-
-    return render_template('add.html', form=form)
-
-@app.route('/add-tbr', methods=['GET', 'POST'])
-def add_tbr():
-    form = AddBookForm()
-    if form.validate_on_submit():
-        book_to_find = form.title.data
-        response = requests.get(f"https://openlibrary.org/search.json?title={book_to_find}")
-        results = response.json()['docs']
-
-        if not results:
-            return redirect(url_for('home'))
-
-        results = results[:10]
-
-        return render_template('select_tbr.html', results = results)
-
-    return render_template('add.html', form=form)
+        return render_template("select.html", results=results, target=target)
+    return render_template("add.html", form=form, target=target)
 
 
 @app.route('/tbr-to-cr', methods=['GET', 'POST'])
@@ -237,103 +380,94 @@ def finish(id):
     return render_template('finish.html', form=form, book=book)
 
 
-@app.route('/find')
-def find():
-    olid = request.args.get('id')  # dit is nog steeds de index in search results of key
+@app.route("/find/<string:target>")
+def find(target):
+    olid = request.args.get('id')
     if not olid:
         return redirect(url_for('home'))
 
-
-    response = requests.get(f"https://openlibrary.org/search.json?q={olid}")
-    results = response.json()['docs']
+    results = search_openlibrary(olid, limit=1)
     if not results:
         return redirect(url_for('home'))
 
-    selected = results[0]  # pak eerste resultaat (OLID/cover_id)
+    selected = results[0]
+    book = book_from_result(selected, started=(target == "current"))
+    db.session.add(book)
+    db.session.commit()
 
-    title = selected.get('title', 'No Title')
-    author_name = selected.get('author_name', ['Unknown'])[0]
-    year = selected.get('first_publish_year', 0)
-    cover_id = selected.get('cover_i')
-    if cover_id:
-        img_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"  # **gebruik cover_i**
+    if target == "current":
+        return redirect(url_for('home'))
+    elif target == "tbr":
+        return redirect(url_for('tbr'))
+    elif target == 'rate':
+        return redirect(url_for('edit', id=book.id))
     else:
-        img_url = None  # fallback
-
-    # Voeg toe aan DB
-    new_book = Book(
-        title=title,
-        author=author_name,
-        year=year,
-        img_url=img_url
-    )
-    db.session.add(new_book)
-    db.session.commit()
-
-    return redirect(url_for('edit', id=new_book.id))
+        return redirect(url_for('edit', id=book.id))
 
 
-@app.route('/find-current')
-def find_current():
-    olid = request.args.get('id')
-    if not olid:
-        return redirect(url_for('home'))
+@app.route('/stats')
+def stats():
+    goal = 50
+    current_year = datetime.now().year
 
-    response = requests.get(f"https://openlibrary.org/search.json?q={olid}")
-    results = response.json()['docs']
-    if not results:
-        return redirect(url_for('home'))
+    # Get all finished books for stats
+    finished_books = Book.query.filter(Book.date_finished.isnot(None)).all()
 
-    selected = results[0]
+    # Convert to JSON for JavaScript
+    books_data = []
+    for book in finished_books:
+        books_data.append({
+            'title': book.title,
+            'author': book.author,
+            'year': book.year,
+            'star_rating': float(book.star_rating) if book.star_rating is not None else None,
+            'spice_rating': float(book.spice_rating) if book.spice_rating is not None else None,
+            'ranking': book.ranking,
+            'review': book.review,
+            'img_url': book.img_url,
+            'date_started': book.date_started.isoformat() if book.date_started else None,
+            'date_finished': book.date_finished.isoformat() if book.date_finished else None,
+            'pages': int(book.pages) if book.pages else None,
+            'genre': book.genre
+        })
 
-    title = selected.get('title', 'No Title')
-    author_name = selected.get('author_name', ['Unknown'])[0]
-    year = selected.get('first_publish_year', 0)
-    cover_id = selected.get('cover_i')
-    img_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg" if cover_id else None
+    read_books = Book.query.filter(
+        Book.date_finished.isnot(None),
+        Book.date_finished.between(f"{current_year}-01-01", f"{current_year}-12-31")
+    ).count()
 
-    new_book = Book(
-        title=title,
-        author=author_name,
-        year=year,
-        img_url=img_url,
-        date_started=date.today()
-    )
-    db.session.add(new_book)
-    db.session.commit()
+    progress = int((read_books / goal) * 100) if goal > 0 else 0
 
-    return redirect(url_for('home'))
+    return render_template('stats.html',
+                           goal=goal,
+                           read_books=read_books,
+                           progress=progress,
+                           books_data=books_data)
 
 
-@app.route('/find-tbr')
-def find_tbr():
-    olid = request.args.get('id')
-    if not olid:
-        return redirect(url_for('tbr'))
+@app.route('/book/<int:book_id>')
+def book_detail(book_id):
+    book = db.get_or_404(Book, book_id)
 
-    response = requests.get(f"https://openlibrary.org/search.json?q={olid}")
-    results = response.json()['docs']
-    if not results:
-        return redirect(url_for('tbr'))
+    # Probeer description op te halen via OpenLibrary API
+    description = None
+    if book.genre is None or True:  # altijd proberen als je wilt
+        if hasattr(book, 'work_key') and book.work_key:
+            try:
+                work_key = book.work_key
+                if work_key.startswith('/works/'):
+                    work_key = work_key[7:]
+                response = requests.get(f"https://openlibrary.org/works/{work_key}.json")
+                if response.status_code == 200:
+                    work_data = response.json()
+                    if isinstance(work_data.get('description'), dict):
+                        description = work_data['description'].get('value')
+                    else:
+                        description = work_data.get('description')
+            except:
+                description = None
 
-    selected = results[0]
-
-    title = selected.get('title', 'No Title')
-    author_name = selected.get('author_name', ['Unknown'])[0]
-    year = selected.get('first_publish_year', 0)
-    cover_id = selected.get('cover_i')
-    img_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg" if cover_id else None
-
-    new_book = Book(
-        title=title,
-        author=author_name,
-        year=year,
-        img_url=img_url
-    )
-    db.session.add(new_book)
-    db.session.commit()
-
-    return redirect(url_for('tbr'))
+    return render_template('book_detail.html', book=book, description=description)
 
 
 

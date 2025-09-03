@@ -59,7 +59,7 @@
 	 width: 100%;
 	 margin-top: 0;
 	 margin-left: 1rem;
-	 margin-bottom: 3rem;
+	 margin-bottom: 1rem;
 }
 
  .book-grid{
@@ -67,6 +67,16 @@
      flex-wrap: wrap;
      justify-content: flex-start;
      gap: 10px;
+}
+
+.book-link {
+  display: block;        /* zorgt dat de a tag als blok werkt */
+  color: inherit;        /* behoudt tekstkleur */
+  text-decoration: none; /* verwijdert onderstreping */
+}
+
+.book-link:hover .card {
+  transform: translateY(-5px);
 }
 
 
@@ -94,15 +104,19 @@
 }
 
 .nav-links a {
+    position: relative;
     color: white;
     font-weight: 700;
     text-decoration: none;
-    transition: color 0.3s;
+    transition: color 0.4s ease, transform 0.3s ease;
     font-size: 1.1rem;
+    padding: 5px 0;
 }
 
-.nav-links a:hover {
-    color: black; /* zwart bij hover */
+.nav-links a:hover,
+ .nav-links a.active {
+    color: black;
+    transform: scale(1.1);
 }
 
 .challenge-container {
@@ -196,15 +210,17 @@
  .card:nth-child(even):hover .front {
 	 transform: rotateY(-180deg);
 }
+
  .back {
-	background-color: #fff;
+    background-color: #fff;
     transform: rotateY(180deg);
     padding: 1em;
-    text-align: center;
+    height: 100%;
     display: flex;
     flex-direction: column;
-    justify-content: center;
 }
+
+
  .card:hover .back {
 	 transform: rotateY(0deg);
 }
@@ -216,6 +232,15 @@
 }
 
 /* Book info styling */
+.book-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
 .book-info h2 {
     font-size: 1rem;
     margin-bottom: 0.25em;
@@ -225,10 +250,12 @@
     margin: 0.25em 0;
 }
 .buttons {
+    position: absolute;
+    bottom: 15px;
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
-    justify-content: center;
     gap: 5px;
-    margin-top: 0.5em;
 }
 
 /* Responsive */
@@ -243,6 +270,8 @@
 }
 
  .button {
+     display: inline-block;
+     white-space: nowrap;
 	 transform: translateZ(40px);
 	 cursor: pointer;
 	 -webkit-backface-visibility: hidden;

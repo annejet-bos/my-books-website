@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% block title %}{{ book.title }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="book-detail">
+        <div class="cover">
+            {% if book.img_url %}
+                <img src="{{ book.img_url }}" alt="{{ book.title }}">
+            {% else %}
+                <div class="no-cover">No Cover</div>
+            {% endif %}
+        </div>
+
+        <div class="info">
+            <h1>{{ book.title }}</h1>
+            <p><strong>Author:</strong> {{ book.author }}</p>
+            <p><strong>Year:</strong> {{ book.year }}</p>
+            {% if book.pages %}<p><strong>Pages:</strong> {{ book.pages }}</p>{% endif %}
+            {% if book.genre %}<p><strong>Genre:</strong> {{ book.genre }}</p>{% endif %}
+            {% if book.star_rating %}<p>⭐ {{ book.star_rating }}/5</p>{% endif %}
+            {% if book.spice_rating %}<p>🌶️ {{ book.spice_rating }}/5</p>{% endif %}
+            {% if book.review %}<p><strong>Review:</strong> {{ book.review }}</p>{% endif %}
+
+            {% if description %}
+                <p><strong>Summary:</strong> {{ description }}</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+.book-detail {
+    display: flex;
+    gap: 40px;
+    margin-top: 40px;
+}
+
+.cover img {
+    max-width: 250px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.info {
+    flex: 1;
+}
+
+.info h1 {
+    margin-bottom: 10px;
+}
+
+.info p {
+    margin: 5px 0;
+}
+
+.no-cover {
+    width: 250px;
+    height: 350px;
+    background: #ccc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    font-weight: bold;
+}
+</style>
+{% endblock %}

@@ -9,14 +9,15 @@
           <h1 class="heading">My Top Books</h1>
           <p class="description">These are my all-time favourite books.</p>
       </div>
+
       <div>
-          <a href="{{ url_for('add') }}" class="button">Add Book</a>
+          <a href="{{ url_for('add', target='rate') }}" class="button">Add Book</a>
       </div>
   </div>
 
   <div class="book-grid">
     {% for book in books %}
-    <div class="card">
+    <div class="card" onclick="window.location='{{ url_for('book_detail', book_id=book.id) }}'">
       <!-- Front: boekcover -->
       <div class="front" style="background-image: url('{{ book.img_url if book.img_url else '/static/no_cover.png' }}');">
       </div>
@@ -31,7 +32,7 @@
             <p class="review">{{ book.review }}</p>
             <div class="buttons">
                 <a href="{{ url_for('edit', id=book.id) }}" class="button">Update</a>
-                <a href="{{ url_for('delete', id=book.id) }}" class="button delete-button">Delete</a>
+                <a href="{{ url_for('delete', target='home', id=book.id) }}" class="button delete-button">Delete</a>
             </div>
         </div>
       </div>
