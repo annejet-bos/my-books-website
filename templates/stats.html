@@ -187,9 +187,10 @@
         box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
         z-index: 1000;
         display: none;
-        max-width: 80vw;
+        max-width: 90vw;
         max-height: 80vh;
         overflow: hidden;
+        width: auto;
     }
 
     .popup-content {
@@ -254,6 +255,20 @@
         transform: translateX(5px);
         box-shadow: 0 4px 12px rgba(255, 105, 180, 0.2);
     }
+
+
+@media screen and (max-width: 768px) {
+    .details-popup {
+        width: 95vw;
+        max-width: none;
+        max-height: 90vh;
+    }
+
+    .popup-content {
+        padding: 15px;
+    }
+}
+</style>
 
 </style>
 

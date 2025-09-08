@@ -37,6 +37,36 @@
     margin-top: 40px;
 }
 
+/* Mobile Friendly */
+@media screen and (max-width: 768px) {
+    .book-detail {
+        flex-direction: column; /* Cover boven info */
+        align-items: flex-start; /* Info links uitlijnen */
+        gap: 20px;
+        padding: 0 15px; /* Ruimte aan de zijkanten */
+    }
+
+    .cover img,
+    .no-cover {
+        max-width: 100%; /* Past beter op mobiel */
+        height: auto;
+    }
+
+    .info {
+        width: 100%;
+    }
+
+    .info p,
+    .info h1 {
+        word-wrap: break-word; /* Lange teksten breken in meerdere regels */
+    }
+
+    .info p.review,
+    .info p.description {
+        max-width: 100%; /* Zorgt dat review en description niet te breed worden */
+    }
+}
+
 .cover img {
     max-width: 250px;
     border-radius: 8px;
@@ -66,4 +96,5 @@
     font-weight: bold;
 }
 </style>
+
 {% endblock %}

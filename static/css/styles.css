@@ -79,6 +79,18 @@
   transform: translateY(-5px);
 }
 
+* Mobile Friendly */
+@media screen and (max-width: 768px) {
+    .book-grid {
+        flex-direction: column; /* Zet boeken onder elkaar */
+        align-items: center;    /* Centraal uitlijnen */
+    }
+
+    .card {
+        width: 90%; /* Zorg dat boeken niet te smal zijn */
+        margin-bottom: 15px;
+    }
+}
 
 .navbar {
     background: linear-gradient(135deg, #ff5fa2, #ff2e92); /* roze gradient */
