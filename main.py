@@ -3,7 +3,7 @@ from flask.cli import load_dotenv
 from flask_bootstrap import Bootstrap5
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-from sqlalchemy import Integer, String, Float, desc, Date
+from sqlalchemy import Integer, String, Float, desc, Date, Text
 from flask_wtf import FlaskForm, CSRFProtect
 from wtforms import StringField, SubmitField, FloatField, DateField
 from wtforms.validators import DataRequired, Optional
@@ -51,7 +51,7 @@ class Book(db.Model):
     date_finished: Mapped[datetime] = mapped_column(Date, nullable = True)
     pages: Mapped[int] = mapped_column(Integer, nullable=True)
     genre: Mapped[str] = mapped_column(String(100), nullable=True)
-    description: Mapped[str] = mapped_column(String(1500), nullable= True)
+    description: Mapped[str] = mapped_column(Text, nullable= True)
 
 with app.app_context():
     db.create_all()
