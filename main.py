@@ -27,7 +27,7 @@ CSRFProtect(app)
 class Base(DeclarativeBase):
     pass
 
-app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///books.db"
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DB_URI', "sqlite:///books.db")
 
 # Create the extension
 db = SQLAlchemy(model_class=Base)
