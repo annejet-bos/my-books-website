@@ -46,12 +46,12 @@ class Book(db.Model):
     spice_rating: Mapped[float] = mapped_column(Float, nullable=True)
     ranking: Mapped[int] = mapped_column(Integer, nullable=True)
     review: Mapped[str] = mapped_column(String(250), nullable=True)
-    img_url: Mapped[str] = mapped_column(String(250), nullable=True)
+    img_url: Mapped[str] = mapped_column(String(500), nullable=True)
     date_started: Mapped[datetime] = mapped_column(Date, nullable = True)
     date_finished: Mapped[datetime] = mapped_column(Date, nullable = True)
     pages: Mapped[int] = mapped_column(Integer, nullable=True)
     genre: Mapped[str] = mapped_column(String(100), nullable=True)
-    description: Mapped[str] = mapped_column(String(1000), nullable= True)
+    description: Mapped[str] = mapped_column(String(1500), nullable= True)
 
 with app.app_context():
     db.create_all()
