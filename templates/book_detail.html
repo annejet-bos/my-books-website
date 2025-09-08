@@ -21,6 +21,7 @@
             {% if book.star_rating %}<p>⭐ {{ book.star_rating }}/5</p>{% endif %}
             {% if book.spice_rating %}<p>🌶️ {{ book.spice_rating }}/5</p>{% endif %}
             {% if book.review %}<p><strong>Review:</strong> {{ book.review }}</p>{% endif %}
+            {% if book.description %}<p><strong>Description:</strong> {{ book.description }}</p>{% endif %}
 
             {% if description %}
                 <p><strong>Summary:</strong> {{ description }}</p>

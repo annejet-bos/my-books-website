@@ -15,6 +15,9 @@ import os
 
 load_dotenv()
 
+GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
+
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
 Bootstrap5(app)
@@ -48,6 +51,7 @@ class Book(db.Model):
     date_finished: Mapped[datetime] = mapped_column(Date, nullable = True)
     pages: Mapped[int] = mapped_column(Integer, nullable=True)
     genre: Mapped[str] = mapped_column(String(100), nullable=True)
+    description: Mapped[str] = mapped_column(String(1000), nullable= True)
 
 with app.app_context():
     db.create_all()
@@ -86,18 +90,25 @@ def get_book_details(work_key):
         if response.status_code == 200:
             work_data = response.json()
 
-            # Extract and categorize genres
+            # Extract subjects and description
             raw_subjects = work_data.get('subjects', [])
-            genre = categorize_genre(raw_subjects)
+
+            # Get description - handle both string and dict formats
+            description = None
+            desc_data = work_data.get('description')
+            if isinstance(desc_data, dict):
+                description = desc_data.get('value')
+            elif isinstance(desc_data, str):
+                description = desc_data
 
             return {
-                'genre': genre,
-                'raw_subjects': raw_subjects[:5]  # Keep first 5 for debugging
+                'subjects': raw_subjects,
+                'description': description
             }
     except Exception as e:
-        print(f"Error fetching work details: {e}")
+        print(f"Error fetching work details for {work_key}: {e}")
 
-    return {'genre': None, 'raw_subjects': []}
+    return {'subjects': [], 'description': None}
 
 
 def get_book_pages_from_editions(edition_keys, median_pages=None):
@@ -143,34 +154,56 @@ def get_edition_details(edition_key):
 
 
 def book_from_result(result, started=False):
-    """Make a Book object out of an OpenLibrary result with better page/genre detection."""
+    """Create a Book object with improved debugging."""
     title = result.get('title', 'No Title')
     author_name = result.get('author_name', ['Unknown'])[0]
     year = result.get('first_publish_year', 0)
     cover_id = result.get('cover_i')
     img_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg" if cover_id else None
 
-    # Try multiple methods to get page count
+
+    # Initialize variables
+    genre = None
+    description = None
     pages = None
 
-    # Method 1: Direct from search result
-    pages = result.get('number_of_pages_median')
-
-    # Method 2: Try from editions if no median
-    if not pages:
-        edition_keys = result.get('edition_key', [])
-        pages = get_book_pages_from_editions(edition_keys)
-
-    # Method 3: Try from first edition in result
-    if not pages and result.get('edition_count', 0) > 0:
-        if 'edition_key' in result and result['edition_key']:
-            pages = get_book_pages_from_editions([result['edition_key'][0]])
-
-    # Get genre from work details
-    genre = None
+    # --- 1. Try OpenLibrary for genre ---
     if result.get('key'):
         work_details = get_book_details(result['key'])
-        genre = work_details['genre']
+        subjects = work_details.get('subjects', [])
+        if subjects:
+            genre = categorize_genre(subjects)
+        description = work_details.get('description')
+
+    # --- 2. Try OpenLibrary for pages ---
+    # Try from search result first
+    pages = result.get('number_of_pages_median')
+    if pages:
+        print(f"Got pages from search median: {pages}")
+
+    # Try from editions if no pages yet
+    if not pages:
+        edition_keys = result.get('edition_key', [])
+        if edition_keys:
+            pages = get_book_pages_from_editions(edition_keys)
+
+    # --- 3. Fallback to Google Books ---
+    google_data = get_google_books_data(title, author_name)
+
+    # Only use Google Books genre if OpenLibrary failed or returned generic "Fiction"
+    if not genre or genre.lower() in ['fiction', 'unknown']:
+        google_categories = google_data.get('categories', [])
+        if google_categories:
+            google_genre = categorize_genre(google_categories)
+            if google_genre:
+                genre = google_genre
+
+    # Use Google Books for missing description/pages
+    if not description:
+        description = google_data.get('description')
+    if not pages:
+        pages = google_data.get('pages')
+
 
     return Book(
         title=title,
@@ -179,85 +212,160 @@ def book_from_result(result, started=False):
         img_url=img_url,
         pages=pages,
         genre=genre,
+        description=description,
         date_started=date.today() if started else None
     )
 
 
-def categorize_genre(raw_subjects):
-    """Convert OpenLibrary's specific subjects to general genres."""
-    if not raw_subjects:
+def clean_genre(categories, title=""):
+    if not categories:
         return None
 
-    # Convert to lowercase for matching
-    subjects_lower = [subject.lower() for subject in raw_subjects]
-    subjects_text = ' '.join(subjects_lower)
+    cat_string = " / ".join(categories).lower()
 
-    # Genre mapping - order matters (more specific first)
+    # Prioriteit: zoek in de categorieën
+    if "fantasy" in cat_string:
+        return "Fantasy"
+    if "romance" in cat_string:
+        return "Romance"
+    if "thriller" in cat_string:
+        return "Thriller"
+    if "science fiction" in cat_string or "sci-fi" in cat_string:
+        return "Science Fiction"
+    if "horror" in cat_string:
+        return "Horror"
+    if "young adult" in cat_string or "ya" in cat_string:
+        return "Young Adult"
+
+    # Als alleen "fiction" terugkomt → probeer titel te gebruiken als hint
+    if "fiction" in cat_string:
+        if any(word in title.lower() for word in ["dragon", "sword", "magic", "kingdom", "throne"]):
+            return "Fantasy"
+        if any(word in title.lower() for word in ["love", "kiss", "heart", "desire"]):
+            return "Romance"
+
+    # Fallback: pak het laatste stukje van de eerste categorie
+    return categories[0].split(" / ")[-1].capitalize()
+
+
+def categorize_genre(raw_subjects):
+    """Convert raw subjects/categories to general genres with filtering of meaningless categories."""
+    if not raw_subjects:
+        return 'Fiction'
+
+    filtered_subjects = []
+    ignore_list = ['fiction', 'books', 'literature', 'english', 'new york times bestseller', 'Serie:gods of the game']
+
+    for sub in raw_subjects:
+        if isinstance(sub, str):
+            cleaned = sub.strip().lower()
+            if cleaned not in ignore_list:
+                filtered_subjects.append(cleaned)
+
+    subjects_text = ' '.join(filtered_subjects)
+
+    # Enhanced genre mapping with more keywords
     genre_mapping = {
         'Romance': [
-            'romance', 'love story', 'romantic', 'love', 'relationships',
-            'contemporary romance', 'historical romance'
+            'romance', 'love story', 'romantic', 'love stories', 'contemporary romance',
+            'historical romance', 'romantic fiction', 'love', 'relationships', 'sports', 'game'
         ],
         'Fantasy': [
-            'fantasy', 'magic', 'magical', 'dragons', 'wizards', 'elves',
-            'sword and sorcery', 'epic fantasy', 'urban fantasy', 'paranormal'
+            'fantasy', 'fantasy fiction', 'magic', 'magical', 'dragons', 'wizards',
+            'elves', 'sword and sorcery', 'epic fantasy', 'urban fantasy', 'paranormal',
+            'high fantasy', 'dark fantasy', 'magical realism'
         ],
         'Science Fiction': [
-            'science fiction', 'sci-fi', 'space', 'aliens', 'future',
-            'dystopian', 'cyberpunk', 'time travel', 'robots'
+            'science fiction', 'sci-fi', 'science fiction & fantasy', 'space', 'aliens',
+            'future', 'dystopian', 'cyberpunk', 'time travel', 'robots', 'space opera',
+            'dystopian fiction', 'alternate history'
         ],
         'Mystery': [
-            'mystery', 'detective', 'crime', 'murder', 'investigation',
-            'police', 'thriller', 'suspense', 'noir'
+            'mystery', 'mystery & detective', 'detective', 'crime', 'murder',
+            'investigation', 'police', 'noir', 'cozy mystery', 'crime fiction',
+            'detective fiction', 'mystery fiction'
+        ],
+        'Thriller': [
+            'thriller', 'suspense', 'psychological thriller', 'action thriller',
+            'spy thriller', 'domestic thriller', 'legal thriller'
         ],
         'Horror': [
-            'horror', 'scary', 'ghost', 'vampire', 'zombie', 'supernatural',
-            'gothic', 'occult'
+            'horror', 'horror fiction', 'ghost', 'vampire', 'zombie', 'supernatural',
+            'gothic', 'occult', 'paranormal horror'
         ],
         'Historical Fiction': [
             'historical fiction', 'historical', 'world war', 'civil war',
-            'medieval', 'victorian', 'ancient'
+            'medieval', 'victorian', 'ancient', 'period fiction', 'historical novel'
         ],
         'Young Adult': [
-            'young adult', 'ya', 'teen', 'coming of age', 'high school',
-            'teenage', 'adolescent'
+            'young adult', 'ya', 'teen', 'coming of age', 'teenage', 'adolescent',
+            'young adult fiction', 'children\'s books', 'juvenile fiction'
         ],
         'Biography': [
-            'biography', 'autobiography', 'memoir', 'life story'
+            'biography', 'autobiography', 'memoir', 'life story', 'biographical',
+            'personal narratives'
         ],
         'Self-Help': [
             'self-help', 'personal development', 'motivation', 'psychology',
-            'business', 'productivity', 'success'
+            'business', 'productivity', 'success', 'self-improvement'
         ],
         'Non-Fiction': [
-            'non-fiction', 'history', 'politics', 'science', 'nature',
-            'travel', 'cooking', 'health', 'religion', 'philosophy'
+            'nonfiction', 'non-fiction', 'history', 'politics', 'science', 'nature',
+            'travel', 'cooking', 'health', 'religion', 'philosophy', 'biography & autobiography'
         ],
         'Literary Fiction': [
-            'literary fiction', 'literature', 'classic', 'literary'
+            'literary fiction', 'literature', 'classic', 'literary', 'classics',
+            'contemporary literature', 'modern literature'
         ],
         'Adventure': [
-            'adventure', 'action', 'survival', 'expedition'
+            'adventure', 'action', 'survival', 'expedition', 'action & adventure'
         ],
         'Children': [
-            'children', 'juvenile', 'picture book', 'kids'
+            'children', 'juvenile', 'picture book', 'kids', 'children\'s literature',
+            'picture books', 'early readers'
         ]
     }
 
     # Check each genre category
     for genre, keywords in genre_mapping.items():
         for keyword in keywords:
-            if keyword in subjects_text:
-                return genre
+            for subject in filtered_subjects:
+                if keyword.lower() in subject:
+                    print(f"Matched genre '{genre}' with keyword '{keyword}' in subject '{subject}'")
+                    return genre
 
-    # If no match found, return the first subject (cleaned up)
-    if raw_subjects:
-        first_subject = raw_subjects[0]
-        # Clean up the subject
-        cleaned = first_subject.replace('_', ' ').title()
-        return cleaned if len(cleaned) < 20 else 'Fiction'
+    # Fallback: clean up first meaningful subject
+    for subject in filtered_subjects:
+        if subject and subject not in ignore_list:
+            cleaned = subject.replace('_', ' ').title()
+            if len(cleaned) < 30:  # Avoid overly long genre names
+                print(f"Using fallback genre: '{cleaned}'")
+                return cleaned
 
     return 'Fiction'
+
+
+def get_google_books_data(title, author=None):
+    """Try to fetch pages + description + categories from Google Books API."""
+    query = f"intitle:{title}"
+    if author:
+        query += f"+inauthor:{author}"
+
+    response = requests.get(
+        "https://www.googleapis.com/books/v1/volumes",
+        params={"q": query, "maxResults": 1, 'key': GOOGLE_API_KEY}
+    )
+    if response.status_code == 200:
+        items = response.json().get("items")
+        if items:
+            volume_info = items[0].get("volumeInfo", {})
+            return {
+                "pages": volume_info.get("pageCount"),
+                "description": volume_info.get("description"),
+                "categories": volume_info.get("categories", [])
+            }
+    return {"pages": None, "description": None, "categories": []}
+
 
 
 # -------------------------------------------------- ROUTES ------------------------------------------------------
@@ -333,8 +441,14 @@ def delete(target):
     book = db.get_or_404(Book, book_id)
     db.session.delete(book)
     db.session.commit()
-    return redirect(url_for('tbr' if target == "tbr" else 'home'))
 
+    # Redirect logic
+    if target == "tbr":
+        return redirect(url_for('tbr'))
+    elif target == "top":
+        return redirect(url_for('top_books'))
+    else:
+        return redirect(url_for('home'))
 
 @app.route("/add", methods=['GET', 'POST'])
 def add():
@@ -425,10 +539,11 @@ def stats():
             'ranking': book.ranking,
             'review': book.review,
             'img_url': book.img_url,
+            'description': book.description,
             'date_started': book.date_started.isoformat() if book.date_started else None,
             'date_finished': book.date_finished.isoformat() if book.date_finished else None,
             'pages': int(book.pages) if book.pages else None,
-            'genre': book.genre
+            'genre': clean_genre([book.genre]) if book.genre else None,
         })
 
     read_books = Book.query.filter(

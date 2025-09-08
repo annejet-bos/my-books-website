@@ -1,10 +1,10 @@
 import requests
+GOOGLE_API_KEY = 'AIzaSyDYvAQp1W6g8Hxni5l5JzxN7ABD-nP4QjA'
 
+query = f"intitle:{'deep end'}+inauthor:{'ali hazelwood'}"
 
-book_title = input('What book do you want to add? ')
-URL = f'https://openlibrary.org/search.json?title={book_title}'
-
-
-response = requests.get(URL)
-results = response.json()
-print(results)
+response = requests.get(
+    "https://www.googleapis.com/books/v1/volumes",
+    params={"q": query, "maxResults": 1, 'key': GOOGLE_API_KEY}
+)
+print(response.text)

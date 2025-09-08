@@ -15,7 +15,7 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
         <h2 class="heading">📚 This Year's Progress</h2>
     </div>
-    <div class="progress">
+     <div class="progress">
         <div class="progress-bar" style="width: {{ progress }}%;"></div>
         <div class="progress-text">{{ read_books }}/{{ goal }}</div>
     </div>
@@ -82,6 +82,19 @@
             <div id="monthBooksList" class="book-grid"></div>
         </div>
     </div>
+
+     <!-- Generic Details Popup -->
+    <div id="detailsPopup" class="details-popup">
+        <div class="popup-content">
+            <div class="popup-header">
+                <h4 id="popupTitle"></h4>
+                <button id="closePopup" class="close-btn">&times;</button>
+            </div>
+            <div id="popupBooksList" class="book-grid"></div>
+        </div>
+    </div>
+    <div id="popupOverlay" class="popup-overlay"></div>
+
     {% else %}
     <div style="text-align: center; padding: 40px; color: #666;">
         <h3>No books found in your database yet!</h3>
@@ -150,12 +163,107 @@
     .book-title { font-weight: 700; color: #333; margin-bottom: 5px; }
     .book-author { color: #666; font-size: 0.9em; margin-bottom: 5px; }
     .book-rating { color: #ff1493; font-size: 0.9em; font-weight: 600; }
+
+    /* Popup Styles */
+    .popup-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 999;
+        display: none;
+        backdrop-filter: blur(4px);
+    }
+
+    .details-popup {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        z-index: 1000;
+        display: none;
+        max-width: 80vw;
+        max-height: 80vh;
+        overflow: hidden;
+    }
+
+    .popup-content {
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+
+    .popup-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px 25px;
+        border-bottom: 1px solid #eee;
+        background: linear-gradient(135deg, #ff69b4, #ff1493);
+        color: white;
+    }
+
+    .popup-header h4 {
+        margin: 0;
+        font-size: 1.3em;
+        font-weight: 700;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 1.8em;
+        cursor: pointer;
+        padding: 0;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        transition: background-color 0.3s ease;
+    }
+
+    .close-btn:hover {
+        background-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .book-grid {
+        padding: 25px;
+        max-height: 60vh;
+        overflow-y: auto;
+    }
+
+    .popup-book-card {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+        margin: 10px 0;
+        border-left: 4px solid #ff69b4;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .popup-book-card:hover {
+        transform: translateX(5px);
+        box-shadow: 0 4px 12px rgba(255, 105, 180, 0.2);
+    }
+
 </style>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
 <script>
     const books = {{ books_data | tojson | safe }};
     console.log('Books data:', books);
+
+    // Global variables for popup management
+    let currentChartData = {};
 
     function calculateStats(books) {
         if (books.length === 0) return;
@@ -167,65 +275,315 @@
         document.getElementById('totalPages').textContent = totalPages > 0 ? totalPages.toLocaleString() : 'N/A';
     }
 
+    function showPopup(title, books) {
+        const popup = document.getElementById('detailsPopup');
+        const overlay = document.getElementById('popupOverlay');
+        const popupTitle = document.getElementById('popupTitle');
+        const booksList = document.getElementById('popupBooksList');
+
+        popupTitle.textContent = title;
+
+        if (books.length === 0) {
+            booksList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No books found in this category.</p>';
+        } else {
+            booksList.innerHTML = books.map(book => `
+                <div class="popup-book-card">
+                    <div class="book-title">${book.title}</div>
+                    <div class="book-author">by ${book.author}</div>
+                    <div class="book-rating">⭐ ${book.star_rating || 'N/A'} | 🌶️ ${book.spice_rating || 'N/A'} ${book.pages ? `| 📖 ${book.pages} pages` : ''}</div>
+                    ${book.genre ? `<div style="font-size: 0.8em; color: #ff1493; margin-top: 5px;">📚 ${book.genre}</div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        overlay.style.display = 'block';
+        popup.style.display = 'block';
+    }
+
+    function hidePopup() {
+        document.getElementById('detailsPopup').style.display = 'none';
+        document.getElementById('popupOverlay').style.display = 'none';
+    }
+
+    // Setup popup event listeners
+    document.getElementById('closePopup').addEventListener('click', hidePopup);
+    document.getElementById('popupOverlay').addEventListener('click', hidePopup);
+
     Chart.defaults.font.family = '"Nunito Sans", sans-serif';
     Chart.defaults.color = '#333';
 
     function createGenreChart(books) {
         const genreCounts = {};
-        books.forEach(b => { const g = b.genre && b.genre.trim() !== '' ? b.genre : 'Unknown'; genreCounts[g] = (genreCounts[g] || 0) + 1; });
+        const genreBooks = {};
+        books.forEach(b => {
+            const g = b.genre && b.genre.trim() !== '' ? b.genre : 'Unknown';
+            genreCounts[g] = (genreCounts[g] || 0) + 1;
+            if (!genreBooks[g]) genreBooks[g] = [];
+            genreBooks[g].push(b);
+        });
+
+        currentChartData.genres = genreBooks;
+
         const ctx = document.getElementById('genreChart').getContext('2d');
-        new Chart(ctx, { type: 'pie', data: { labels: Object.keys(genreCounts), datasets: [{ data: Object.values(genreCounts), backgroundColor: ['#ff69b4','#ff1493','#ff91c7','#ff4da6','#ffa1d6','#ff77c7','#ff5fb8','#ff2e92','#ffadd6','#ff85c7'], borderWidth: 2, borderColor: '#fff' }] }, options: { responsive: true, plugins: { legend: { position: 'bottom' } } }});
+        new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: Object.keys(genreCounts),
+                datasets: [{
+                    data: Object.values(genreCounts),
+                    backgroundColor: ['#ff69b4','#ff1493','#ff91c7','#ff4da6','#ffa1d6','#ff77c7','#ff5fb8','#ff2e92','#ffadd6','#ff85c7'],
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom' }
+                },
+                onClick: (event, elements) => {
+                    if (elements.length > 0) {
+                        const index = elements[0].index;
+                        const genre = Object.keys(genreCounts)[index];
+                        showPopup(`📚 ${genre} Books (${genreCounts[genre]} books)`, genreBooks[genre]);
+                    }
+                }
+            }
+        });
     }
 
     function createPageCategoriesChart(books) {
         const cats = {'≤300 pages':0,'301-500 pages':0,'500+ pages':0,'Unknown':0};
-        books.forEach(b => { if (b.pages>0){ if(b.pages<=300) cats['≤300 pages']++; else if(b.pages<=500) cats['301-500 pages']++; else cats['500+ pages']++; } else { cats['Unknown']++; }});
+        const categoryBooks = {'≤300 pages':[],'301-500 pages':[],'500+ pages':[],'Unknown':[]};
+
+        books.forEach(b => {
+            if (b.pages > 0) {
+                if (b.pages <= 300) {
+                    cats['≤300 pages']++;
+                    categoryBooks['≤300 pages'].push(b);
+                } else if (b.pages <= 500) {
+                    cats['301-500 pages']++;
+                    categoryBooks['301-500 pages'].push(b);
+                } else {
+                    cats['500+ pages']++;
+                    categoryBooks['500+ pages'].push(b);
+                }
+            } else {
+                cats['Unknown']++;
+                categoryBooks['Unknown'].push(b);
+            }
+        });
+
+        currentChartData.pageCategories = categoryBooks;
+
         const ctx = document.getElementById('pageCategoriesChart').getContext('2d');
-        new Chart(ctx, { type: 'doughnut', data: { labels: Object.keys(cats), datasets: [{ data: Object.values(cats), backgroundColor: ['#ff91c7','#ff69b4','#ff1493','#ffc0cb'], borderWidth: 2, borderColor: '#fff' }] }, options: { responsive: true, plugins: { legend: { position: 'bottom' } } }});
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(cats),
+                datasets: [{
+                    data: Object.values(cats),
+                    backgroundColor: ['#ff91c7','#ff69b4','#ff1493','#ffc0cb'],
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom' }
+                },
+                onClick: (event, elements) => {
+                    if (elements.length > 0) {
+                        const index = elements[0].index;
+                        const category = Object.keys(cats)[index];
+                        showPopup(`📖 ${category} Books (${cats[category]} books)`, categoryBooks[category]);
+                    }
+                }
+            }
+        });
     }
 
     function createStarRatingChart(books) {
         const labels = ['1','1.5','2','2.5','3','3.5','4','4.5','5'];
-        const counts = {}; labels.forEach(l => counts[l]=0);
-        books.forEach(b => { if(b.star_rating!==null){ const r=b.star_rating.toString(); if(counts.hasOwnProperty(r)) counts[r]++; }});
+        const counts = {};
+        const ratingBooks = {};
+
+        labels.forEach(l => {
+            counts[l] = 0;
+            ratingBooks[l] = [];
+        });
+
+        books.forEach(b => {
+            if (b.star_rating !== null) {
+                const r = b.star_rating.toString();
+                if (counts.hasOwnProperty(r)) {
+                    counts[r]++;
+                    ratingBooks[r].push(b);
+                }
+            }
+        });
+
+        currentChartData.starRatings = ratingBooks;
+
         const ctx = document.getElementById('starRatingChart').getContext('2d');
-        new Chart(ctx, { type:'bar', data:{ labels:labels, datasets:[{ label:'Books', data:labels.map(l=>counts[l]), backgroundColor:'#ff69b4', borderColor:'#ff1493', borderWidth:2, borderRadius:4 }]}, options:{ responsive:true, scales:{ y:{beginAtZero:true,ticks:{stepSize:1}}, x:{grid:{display:false}}}, plugins:{legend:{display:false}}}});
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Books',
+                    data: labels.map(l => counts[l]),
+                    backgroundColor: '#ff69b4',
+                    borderColor: '#ff1493',
+                    borderWidth: 2,
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {beginAtZero: true, ticks: {stepSize: 1}},
+                    x: {grid: {display: false}}
+                },
+                plugins: {legend: {display: false}},
+                onClick: (event, elements) => {
+                    if (elements.length > 0) {
+                        const index = elements[0].index;
+                        const rating = labels[index];
+                        showPopup(`⭐ ${rating} Star Books (${counts[rating]} books)`, ratingBooks[rating]);
+                    }
+                }
+            }
+        });
     }
 
     function createSpiceRatingChart(books) {
-        const labels = ['0','0.5','1','1.5','2','2.5','3','3.5','4','4.5','5'];
-        const counts = {}; labels.forEach(l => counts[l]=0);
-        books.forEach(b => { if(b.spice_rating!==null){ const r=b.spice_rating.toString(); if(counts.hasOwnProperty(r)) counts[r]++; }});
+        const labels = ['1','1.5','2','2.5','3','3.5','4','4.5','5'];
+        const counts = {};
+        const ratingBooks = {};
+
+        labels.forEach(l => {
+            counts[l] = 0;
+            ratingBooks[l] = [];
+        });
+
+        books.forEach(b => {
+            if (b.spice_rating !== null) {
+                const r = b.spice_rating.toString();
+                if (counts.hasOwnProperty(r)) {
+                    counts[r]++;
+                    ratingBooks[r].push(b);
+                }
+            }
+        });
+
+        currentChartData.spiceRatings = ratingBooks;
+
         const ctx = document.getElementById('spiceRatingChart').getContext('2d');
-        new Chart(ctx, { type:'bar', data:{ labels:labels, datasets:[{ label:'Books', data:labels.map(l=>counts[l]), backgroundColor:'#ff91c7', borderColor:'#ff4da6', borderWidth:2, borderRadius:4 }]}, options:{ responsive:true, scales:{ y:{beginAtZero:true,ticks:{stepSize:1}}, x:{grid:{display:false}}}, plugins:{legend:{display:false}}}});
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Books',
+                    data: labels.map(l => counts[l]),
+                    backgroundColor: '#ff91c7',
+                    borderColor: '#ff4da6',
+                    borderWidth: 2,
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {beginAtZero: true, ticks: {stepSize: 1}},
+                    x: {grid: {display: false}}
+                },
+                plugins: {legend: {display: false}},
+                onClick: (event, elements) => {
+                    if (elements.length > 0) {
+                        const index = elements[0].index;
+                        const rating = labels[index];
+                        showPopup(`🌶️ ${rating} Spice Rating Books (${counts[rating]} books)`, ratingBooks[rating]);
+                    }
+                }
+            }
+        });
     }
 
     function createMonthlyChart(books) {
-        const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        const monthlyData={}, monthlyBooks={}; months.forEach(m=>{monthlyData[m]=0; monthlyBooks[m]=[];});
-        const year=new Date().getFullYear();
-        books.forEach(b=>{ if(b.date_finished){ const d=new Date(b.date_finished+'T00:00:00'); if(d.getFullYear()===year){ const m=months[d.getMonth()]; monthlyData[m]++; monthlyBooks[m].push(b); } }});
-        const ctx=document.getElementById('monthlyChart').getContext('2d');
-        new Chart(ctx,{type:'bar',data:{labels:months,datasets:[{label:'Books Finished',data:Object.values(monthlyData),backgroundColor:'#ff69b4',borderColor:'#ff1493',borderWidth:2,borderRadius:6}]},options:{responsive:true,onClick:(e,els)=>{if(els.length>0){const i=els[0].index;showMonthDetails(months[i],monthlyBooks[months[i]]);}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}},x:{grid:{display:false}}},plugins:{legend:{display:false}}}});
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const monthlyData = {}, monthlyBooks = {};
+        months.forEach(m => {monthlyData[m] = 0; monthlyBooks[m] = [];});
+
+        const year = new Date().getFullYear();
+        books.forEach(b => {
+            if (b.date_finished) {
+                const d = new Date(b.date_finished + 'T00:00:00');
+                if (d.getFullYear() === year) {
+                    const m = months[d.getMonth()];
+                    monthlyData[m]++;
+                    monthlyBooks[m].push(b);
+                }
+            }
+        });
+
+        const ctx = document.getElementById('monthlyChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: months,
+                datasets: [{
+                    label: 'Books Finished',
+                    data: Object.values(monthlyData),
+                    backgroundColor: '#ff69b4',
+                    borderColor: '#ff1493',
+                    borderWidth: 2,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                onClick: (e, els) => {
+                    if (els.length > 0) {
+                        const i = els[0].index;
+                        showMonthDetails(months[i], monthlyBooks[months[i]]);
+                    }
+                },
+                scales: {
+                    y: {beginAtZero: true, ticks: {stepSize: 1}},
+                    x: {grid: {display: false}}
+                },
+                plugins: {legend: {display: false}}
+            }
+        });
     }
 
     function showMonthDetails(month, books) {
-        const monthDetails=document.getElementById('monthDetails');
-        const selectedMonth=document.getElementById('selectedMonth');
-        const monthBooksList=document.getElementById('monthBooksList');
-        selectedMonth.textContent=`Books read in ${month}`;
-        if(books.length===0){monthBooksList.innerHTML='<p style="text-align: center; color: #666;">No books finished this month.</p>';}
-        else{monthBooksList.innerHTML=books.map(b=>`
-            <div class="month-book-card">
-                <div class="book-title">${b.title}</div>
-                <div class="book-author">by ${b.author}</div>
-                <div class="book-rating">⭐ ${b.star_rating || 'N/A'} | 🌶️ ${b.spice_rating || 'N/A'} ${b.pages?`| 📖 ${b.pages} pages`:''}</div>
-                ${b.genre?`<div style="font-size: 0.8em; color: #ff1493;">📚 ${b.genre}</div>`:''}
-            </div>`).join('');}
-        monthDetails.style.display='block'; monthDetails.scrollIntoView({behavior:'smooth'});
+        const monthDetails = document.getElementById('monthDetails');
+        const selectedMonth = document.getElementById('selectedMonth');
+        const monthBooksList = document.getElementById('monthBooksList');
+
+        selectedMonth.textContent = `Books read in ${month}`;
+
+        if (books.length === 0) {
+            monthBooksList.innerHTML = '<p style="text-align: center; color: #666;">No books finished this month.</p>';
+        } else {
+            monthBooksList.innerHTML = books.map(b => `
+                <div class="month-book-card">
+                    <div class="book-title">${b.title}</div>
+                    <div class="book-author">by ${b.author}</div>
+                    <div class="book-rating">⭐ ${b.star_rating || 'N/A'} | 🌶️ ${b.spice_rating || 'N/A'} ${b.pages ? `| 📖 ${b.pages} pages` : ''}</div>
+                    ${b.genre ? `<div style="font-size: 0.8em; color: #ff1493;">📚 ${b.genre}</div>` : ''}
+                </div>`).join('');
+        }
+
+        monthDetails.style.display = 'block';
+        monthDetails.scrollIntoView({behavior: 'smooth'});
     }
 
-    if (books && books.length>0) {
+    if (books && books.length > 0) {
         calculateStats(books);
         createGenreChart(books);
         createPageCategoriesChart(books);
